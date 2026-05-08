@@ -1,0 +1,1 @@
+"""Funds domain (fundraising projects)."""

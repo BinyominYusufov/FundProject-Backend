@@ -42,6 +42,7 @@ urlpatterns = [
     path('api/campaigns/', include('campaigns.urls')),
     path('api/donations/', include('donations.urls')),
     path('api/fund-owner/', include('fund_owner.urls')),
+    path('api/funds/', include('funds.urls')),
     path('api/fund-applications/', include('myapp.urls')),
     path('api/applications/', include('applications.urls')),
 ]

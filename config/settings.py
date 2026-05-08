@@ -51,6 +51,7 @@ LOCAL_APPS = [
     'campaigns',
     'donations',
     'fund_owner',
+    'funds',
     'applications',
     'myapp',
 ]

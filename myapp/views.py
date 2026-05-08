@@ -69,6 +69,7 @@ class FundOwnerApplicationCollectionView(generics.GenericAPIView):
 
 class FundOwnerApplicationReviewView(generics.GenericAPIView):
     queryset = FundOwnerApplication.objects.all()
+    serializer_class = FundOwnerApplicationReviewSerializer
     authentication_classes = (JWTAuthentication,)
     permission_classes = (IsAdminRole,)
     lookup_field = "pk"

@@ -160,7 +160,9 @@ class ChangePasswordSerializer(serializers.Serializer):
     confirm_password = serializers.CharField(write_only=True, min_length=8, max_length=128)
 
     def validate(self, attrs: dict) -> dict:
-        user: User = self.context["request"].user
+        user: User = self.context.get("password_target_user") or self.context["request"].user
+        if not user.is_authenticated:
+            raise serializers.ValidationError("invalid")
         if not user.check_password(attrs["old_password"]):
             raise serializers.ValidationError("invalid")
         if attrs["new_password"] != attrs["confirm_password"]:

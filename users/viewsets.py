@@ -5,17 +5,17 @@ from typing import Any, Final
 from django.db.models import QuerySet
 from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework_simplejwt.authentication import JWTAuthentication
+# from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from users.models import Donation, User
 from users.pagination import AdminUserPagination
-from myapp.permissions import IsAdminRole
-from users.permissions import IsAuthenticatedActiveUser, is_active_admin_request
+# from myapp.permissions import IsAdminRole
+# from users.permissions import IsAuthenticatedActiveUser, is_active_admin_request
 from users.querysets import with_admin_list_annotations
 from users.serializers import (
     AdminUserDonationListSerializer,
@@ -35,8 +35,11 @@ _STATUS_VALUES: Final[frozenset[str]] = frozenset(
 @method_decorator(name="unblock", decorator=swagger_auto_schema(tags=["Admin"]))
 @method_decorator(name="donations", decorator=swagger_auto_schema(tags=["Admin"]))
 class AdminUserViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
+    # DEV
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
     serializer_class = AdminUserSerializer
     pagination_class = AdminUserPagination
 
@@ -54,8 +57,9 @@ class AdminUserViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return AdminUserSerializer
 
     def get_queryset(self) -> QuerySet[User]:
-        if not is_active_admin_request(self.request):
-            return User.objects.none()
+        # DEV: без проверки админа
+        # if not is_active_admin_request(self.request):
+        #     return User.objects.none()
         qs: QuerySet[User] = User.objects.select_related("organization").order_by("-created_at")
         if self.action != "list":
             return qs
@@ -92,7 +96,7 @@ class AdminUserViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     @action(detail=True, methods=["patch"], url_path="block")
     def block(self, request: Request, pk: Any = None) -> Response:
         user = self.get_object()
-        if user.pk == request.user.pk:
+        if user.pk == getattr(request.user, "pk", None):
             return Response(
                 {"detail": "Cannot block yourself."},
                 status=status.HTTP_400_BAD_REQUEST,

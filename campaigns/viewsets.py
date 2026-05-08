@@ -3,15 +3,15 @@ from __future__ import annotations
 from django.db.models import QuerySet
 from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import mixins, viewsets
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework import mixins, permissions, viewsets
+# from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from myapp.permissions import IsAdminRole, IsFundOwnerWithOrganization
-from users.permissions import (
-    IsAuthenticatedActiveUser,
-    fund_owner_scoped_organization_id,
-    is_active_admin_request,
-)
+# from myapp.permissions import IsAdminRole, IsFundOwnerWithOrganization
+# from users.permissions import (
+#     IsAuthenticatedActiveUser,
+#     fund_owner_scoped_organization_id,
+#     is_active_admin_request,
+# )
 
 from .models import Campaign
 from .serializers import (
@@ -24,13 +24,17 @@ from .serializers import (
 @method_decorator(name="list", decorator=swagger_auto_schema(tags=["Admin"]))
 @method_decorator(name="destroy", decorator=swagger_auto_schema(tags=["Admin"]))
 class AdminCampaignViewSet(mixins.ListModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
+    # DEV
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
     serializer_class = AdminCampaignSerializer
 
     def get_queryset(self) -> QuerySet[Campaign]:
-        if not is_active_admin_request(self.request):
-            return Campaign.objects.none()
+        # DEV
+        # if not is_active_admin_request(self.request):
+        #     return Campaign.objects.none()
         return Campaign.objects.select_related("organization").order_by("-created_at")
 
 
@@ -44,17 +48,20 @@ class AdminCampaignViewSet(mixins.ListModelMixin, mixins.DestroyModelMixin, view
     ),
 )
 class FundOwnerCampaignViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAuthenticatedActiveUser, IsFundOwnerWithOrganization)
+    # DEV
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser, IsFundOwnerWithOrganization)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
     serializer_class = FundOwnerCampaignSerializer
 
     def get_queryset(self) -> QuerySet[Campaign]:
-        oid = fund_owner_scoped_organization_id(self.request)
-        if oid is None:
-            return Campaign.objects.none()
+        # DEV: все кампании
+        # oid = fund_owner_scoped_organization_id(self.request)
+        # if oid is None:
+        #     return Campaign.objects.none()
         return (
             Campaign.objects.select_related("organization")
-            .filter(organization_id=oid)
             .order_by("-created_at")
         )
 

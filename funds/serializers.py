@@ -5,6 +5,7 @@ from typing import Any
 from rest_framework import serializers
 
 from funds.models import Fund
+from users.models import Organization, User
 from funds.validators import (
     validate_cover_image_file,
     validate_supporting_document_file,
@@ -61,12 +62,28 @@ class FundCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict[str, Any]) -> Fund:
         request = self.context["request"]
-        user = request.user
-        organization = user.organization
+        user: User | None = request.user if request.user.is_authenticated else None
+        organization = user.organization if user else None
+        # DEV: без логина — первая организация и первый пользователь в БД.
         if organization is None:
+            organization = Organization.objects.order_by("pk").first()
+        if user is None:
+            user = User.objects.order_by("pk").first()
+        if organization is None or user is None:
             raise serializers.ValidationError(
-                {"organization": "No organization is assigned to your account."},
+                {
+                    "detail": (
+                        "DEV: нужна хотя бы одна Organization и один User в БД, "
+                        "или войди под fund owner с organization."
+                    ),
+                },
             )
+        # Продакшен (только из request.user):
+        # organization = user.organization
+        # if organization is None:
+        #     raise serializers.ValidationError(
+        #         {"organization": "No organization is assigned to your account."},
+        #     )
         return Fund.objects.create(
             organization=organization,
             created_by=user,

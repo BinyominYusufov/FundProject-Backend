@@ -58,6 +58,7 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
+# При необходимости временно отключи отдельные строки (например CSRF) — не удаляй, только комментируй.
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -68,6 +69,10 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# Было отключено для тестов (раскомментируй верхний MIDDLEWARE и удали этот блок, если снова нужен пустой стек):
+# MIDDLEWARE = []
+# SILENCED_SYSTEM_CHECKS = ["admin.E408", "admin.E409", "admin.E410"]
 
 ROOT_URLCONF = 'config.urls'
 
@@ -119,9 +124,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.User'
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
+    # --- DEV: без обязательной JWT-аутентификации на уровне DRF (раскомментируй для продакшена) ---
+    # 'DEFAULT_AUTHENTICATION_CLASSES': [
+    #     'rest_framework_simplejwt.authentication.JWTAuthentication',
+    # ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
@@ -130,11 +137,12 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
-    'DEFAULT_THROTTLE_RATES': {
-        'change_password': '5/min',
-        'login': '10/min',
-        'register': '5/min',
-    },
+    # --- DEV: лимиты запросов отключены (раскомментируй для продакшена) ---
+    # 'DEFAULT_THROTTLE_RATES': {
+    #     'change_password': '5/min',
+    #     'login': '10/min',
+    #     'register': '5/min',
+    # },
 }
 
 from datetime import timedelta

@@ -3,17 +3,19 @@ from __future__ import annotations
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, permissions
-from rest_framework_simplejwt.authentication import JWTAuthentication
+# from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from fund_owner.serializers import OrganizationPublicSerializer, OrganizationWriteSerializer
-from myapp.permissions import IsFundOwnerWithOrganization
-from users.models import Organization, User
-from users.permissions import IsAuthenticatedActiveUser
+# from myapp.permissions import IsFundOwnerWithOrganization
+from users.models import Organization
+# from users.permissions import IsAuthenticatedActiveUser
 
 
 class OrganizationProfileView(generics.RetrieveUpdateAPIView):
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAuthenticatedActiveUser, IsFundOwnerWithOrganization)
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser, IsFundOwnerWithOrganization)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
 
     @swagger_auto_schema(tags=["Fund owner"])
     def get(self, request, *args, **kwargs):
@@ -28,8 +30,12 @@ class OrganizationProfileView(generics.RetrieveUpdateAPIView):
         return super().patch(request, *args, **kwargs)
 
     def get_object(self) -> Organization:
-        user: User = self.request.user
-        return get_object_or_404(Organization, pk=user.organization_id)
+        user = self.request.user
+        if user.is_authenticated and getattr(user, "organization_id", None):
+            return get_object_or_404(Organization, pk=user.organization_id)
+        # DEV: первая организация
+        first = Organization.objects.order_by("pk").first()
+        return get_object_or_404(Organization, pk=first.pk) if first else get_object_or_404(Organization, pk=0)
 
     def get_serializer_class(self):
         if self.request.method in ("PUT", "PATCH"):

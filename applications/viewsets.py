@@ -3,16 +3,16 @@ from __future__ import annotations
 from django.db.models import Q, QuerySet
 from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework_simplejwt.authentication import JWTAuthentication
+# from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from applications.models import FundApplication
 from applications.serializers import AdminFundApplicationSerializer
-from myapp.permissions import IsAdminRole
-from users.permissions import IsAuthenticatedActiveUser, is_active_admin_request
+# from myapp.permissions import IsAdminRole
+# from users.permissions import IsAuthenticatedActiveUser, is_active_admin_request
 
 
 @method_decorator(name="list", decorator=swagger_auto_schema(tags=["Admin"]))
@@ -20,13 +20,17 @@ from users.permissions import IsAuthenticatedActiveUser, is_active_admin_request
 @method_decorator(name="approve", decorator=swagger_auto_schema(tags=["Admin"]))
 @method_decorator(name="reject", decorator=swagger_auto_schema(tags=["Admin"]))
 class AdminFundApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
+    # DEV: без админских прав
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
     serializer_class = AdminFundApplicationSerializer
 
     def get_queryset(self) -> QuerySet[FundApplication]:
-        if not is_active_admin_request(self.request):
-            return FundApplication.objects.none()
+        # DEV: без проверки is_active_admin_request
+        # if not is_active_admin_request(self.request):
+        #     return FundApplication.objects.none()
         qs = FundApplication.objects.all().order_by("-created_at")
         search = (self.request.query_params.get("search") or "").strip()
         if search:

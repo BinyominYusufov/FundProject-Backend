@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from campaigns.models import Campaign
 from donations.models import Donation
+from users.models import User
 
 
 class DonationSerializer(serializers.ModelSerializer):
@@ -69,9 +70,18 @@ class DonationCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict) -> Donation:
         request = self.context.get("request")
-        if request is None or not request.user.is_authenticated:
-            raise serializers.ValidationError("Authentication required.")
-        user = request.user
+        if request is None:
+            raise serializers.ValidationError("Request context required.")
+        user: User | None = request.user if request.user.is_authenticated else None
+        # DEV: без логина — первый пользователь в БД
+        if user is None:
+            user = User.objects.order_by("pk").first()
+        if user is None:
+            raise serializers.ValidationError("DEV: создай User в БД или войди.")
+        # Продакшен:
+        # if not request.user.is_authenticated:
+        #     raise serializers.ValidationError("Authentication required.")
+        # user = request.user
         if getattr(user, "is_blocked", False) or not user.is_active:
             raise serializers.ValidationError("Account is not allowed to donate.")
         validated_data["user"] = user

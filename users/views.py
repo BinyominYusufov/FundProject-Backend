@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 from drf_yasg.utils import swagger_auto_schema
-from myapp.permissions import IsAdminRole
-from rest_framework import generics
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework import generics, permissions
+# from rest_framework_simplejwt.authentication import JWTAuthentication
 
+# from myapp.permissions import IsAdminRole
 from .models import User
-from .permissions import IsAuthenticatedActiveUser
+# from .permissions import IsAuthenticatedActiveUser
 from .serializers import UserSerializer, UserUpdateSerializer
 
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAuthenticatedActiveUser,)
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser,)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
 
     @swagger_auto_schema(tags=["Users"])
     def get(self, request, *args, **kwargs):
@@ -27,8 +29,16 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         return super().patch(request, *args, **kwargs)
 
     def get_object(self) -> User:
-        u: User = self.request.user
-        return User.objects.select_related("organization").get(pk=u.pk)
+        # DEV: без логина — первый пользователь
+        u = self.request.user
+        if u.is_authenticated:
+            return User.objects.select_related("organization").get(pk=u.pk)
+        first = User.objects.select_related("organization").order_by("pk").first()
+        if first is None:
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound("No users in database.")
+        return first
 
     def get_serializer_class(self):
         if self.request.method in ("PUT", "PATCH"):
@@ -37,9 +47,11 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
 
 class UserListView(generics.ListAPIView):
-    authentication_classes = (JWTAuthentication,)
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
     serializer_class = UserSerializer
-    permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
 
     @swagger_auto_schema(tags=["Users"])
     def get(self, request, *args, **kwargs):

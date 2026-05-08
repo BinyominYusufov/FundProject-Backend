@@ -4,17 +4,17 @@ from django.db.models import QuerySet
 from django.utils.decorators import method_decorator
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import mixins, parsers, viewsets
+from rest_framework import mixins, parsers, permissions, viewsets
 from rest_framework.response import Response
 
 from funds.models import Fund
-from funds.permissions import IsVerifiedFundOwner
 from funds.serializers import (
     FundCreateSerializer,
     FundPartialUpdateSerializer,
     FundReadSerializer,
 )
-from users.permissions import IsAuthenticatedActiveUser
+# from funds.permissions import IsVerifiedFundOwner
+# from users.permissions import IsAuthenticatedActiveUser
 
 
 @method_decorator(
@@ -102,7 +102,11 @@ class FundViewSet(
     Organization and creator are derived from the authenticated user.
     """
 
-    permission_classes = (IsAuthenticatedActiveUser, IsVerifiedFundOwner)
+    # DEV: ограничения сняты — для продакшена:
+    # permission_classes = (IsAuthenticatedActiveUser, IsVerifiedFundOwner)
+    # authentication_classes = (JWTAuthentication,)  # из rest_framework_simplejwt
+    permission_classes = (permissions.AllowAny,)
+    authentication_classes = ()
     parser_classes = (
         parsers.MultiPartParser,
         parsers.FormParser,
@@ -110,17 +114,19 @@ class FundViewSet(
     )
 
     def get_queryset(self) -> QuerySet[Fund]:
-        user = self.request.user
-        if not user.is_authenticated:
-            return Fund.objects.none()
-        oid = getattr(user, "organization_id", None)
-        if oid is None:
-            return Fund.objects.none()
-        return (
-            Fund.objects.filter(organization_id=oid)
-            .select_related("organization", "created_by")
-            .order_by("-created_at")
-        )
+        # DEV: все фонды. Продакшен:
+        # user = self.request.user
+        # if not user.is_authenticated:
+        #     return Fund.objects.none()
+        # oid = getattr(user, "organization_id", None)
+        # if oid is None:
+        #     return Fund.objects.none()
+        # return (
+        #     Fund.objects.filter(organization_id=oid)
+        #     .select_related("organization", "created_by")
+        #     .order_by("-created_at")
+        # )
+        return Fund.objects.select_related("organization", "created_by").order_by("-created_at")
 
     def get_serializer_class(self):
         if self.action == "create":

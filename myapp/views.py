@@ -7,11 +7,11 @@ from rest_framework import generics, permissions, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework_simplejwt.authentication import JWTAuthentication
+# from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from myapp.exceptions import EmailDeliveryError
 from myapp.models import FundOwnerApplication
-from myapp.permissions import IsAdminRole
+# from myapp.permissions import IsAdminRole
 from myapp.serializers import (
     FundOwnerApplicationReviewSerializer,
     FundOwnerApplicationSerializer,
@@ -29,12 +29,14 @@ class FundOwnerApplicationCollectionView(generics.GenericAPIView):
     queryset = FundOwnerApplication.objects.all()
     serializer_class = FundOwnerApplicationSerializer
     pagination_class = None
-    authentication_classes = (JWTAuthentication,)
+    # authentication_classes = (JWTAuthentication,)
+    authentication_classes = ()
     permission_classes = (permissions.AllowAny,)
 
     def get_permissions(self):
-        if self.request.method == "GET":
-            return [IsAdminRole()]
+        # DEV: список заявок без админа
+        # if self.request.method == "GET":
+        #     return [IsAdminRole()]
         return [permissions.AllowAny()]
 
     def get_queryset(self):
@@ -70,8 +72,10 @@ class FundOwnerApplicationCollectionView(generics.GenericAPIView):
 class FundOwnerApplicationReviewView(generics.GenericAPIView):
     queryset = FundOwnerApplication.objects.all()
     serializer_class = FundOwnerApplicationReviewSerializer
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAdminRole,)
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAdminRole,)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
     lookup_field = "pk"
 
     @swagger_auto_schema(tags=["Fund owner applications"])

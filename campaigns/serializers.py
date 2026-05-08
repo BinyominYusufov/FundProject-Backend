@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from users.models import User
+from users.models import Organization, User
 
 from .models import Campaign
 
@@ -66,9 +66,19 @@ class FundOwnerCampaignCreateSerializer(serializers.ModelSerializer):
         return v
 
     def create(self, validated_data: dict) -> Campaign:
-        user: User = self.context["request"].user
-        organization = user.organization
+        request = self.context["request"]
+        user: User | None = request.user if request.user.is_authenticated else None
+        organization = user.organization if user else None
+        # DEV: без логина — первая организация
         if organization is None:
-            raise serializers.ValidationError("No organization assigned to your account.")
+            organization = Organization.objects.order_by("pk").first()
+        if organization is None:
+            raise serializers.ValidationError(
+                "DEV: создай Organization в БД или войди под fund owner с organization.",
+            )
+        # Продакшен:
+        # organization = user.organization
+        # if organization is None:
+        #     raise serializers.ValidationError("No organization assigned to your account.")
         validated_data["organization"] = organization
         return super().create(validated_data)

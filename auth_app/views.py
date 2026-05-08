@@ -6,7 +6,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+# from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -14,13 +14,13 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 
 from users.models import User
-from users.permissions import IsAuthenticatedActiveUser
+# from users.permissions import IsAuthenticatedActiveUser
 from users.serializers import UserSerializer
 
 from myapp.permissions import FUNOWNERS_GROUP
 
 from auth_app.services import change_user_password
-from auth_app.throttles import ChangePasswordThrottle, LoginThrottle, RegisterThrottle
+# from auth_app.throttles import ChangePasswordThrottle, LoginThrottle, RegisterThrottle
 
 from .serializers import (
     ChangePasswordErrorSerializer,
@@ -40,7 +40,8 @@ from .serializers import (
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = (permissions.AllowAny,)
-    throttle_classes = (RegisterThrottle,)
+    # throttle_classes = (RegisterThrottle,)
+    throttle_classes = ()
 
     @swagger_auto_schema(
         tags=['Auth'],
@@ -73,7 +74,8 @@ class RegisterView(generics.CreateAPIView):
 class LoginView(APIView):
     permission_classes = (permissions.AllowAny,)
     serializer_class = LoginSerializer
-    throttle_classes = (LoginThrottle,)
+    # throttle_classes = (LoginThrottle,)
+    throttle_classes = ()
 
     @swagger_auto_schema(
         tags=['Auth'],
@@ -97,8 +99,10 @@ class LoginView(APIView):
 
 
 class LogoutView(APIView):
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAuthenticatedActiveUser,)
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser,)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
 
     @swagger_auto_schema(
         tags=['Auth'],
@@ -124,7 +128,7 @@ class LogoutView(APIView):
                 {"detail": "Invalid or expired refresh token."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if token_uid != request.user.pk:
+        if request.user.is_authenticated and token_uid != request.user.pk:
             return Response(
                 {"detail": "Refresh token does not match the authenticated user."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -140,9 +144,12 @@ class LogoutView(APIView):
 
 
 class ChangePasswordView(APIView):
-    authentication_classes = (JWTAuthentication,)
-    permission_classes = (IsAuthenticatedActiveUser,)
-    throttle_classes = (ChangePasswordThrottle,)
+    # authentication_classes = (JWTAuthentication,)
+    # permission_classes = (IsAuthenticatedActiveUser,)
+    # throttle_classes = (ChangePasswordThrottle,)
+    authentication_classes = ()
+    permission_classes = (permissions.AllowAny,)
+    throttle_classes = ()
 
     @swagger_auto_schema(
         tags=["Auth"],
@@ -154,7 +161,16 @@ class ChangePasswordView(APIView):
         },
     )
     def post(self, request, *args, **kwargs) -> Response:
-        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
+        target_user = request.user if request.user.is_authenticated else User.objects.order_by("pk").first()
+        if target_user is None:
+            return Response(
+                {"error": "No user in database.", "code": "PASSWORD_CHANGE_FAILED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"request": request, "password_target_user": target_user},
+        )
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError:
@@ -162,7 +178,7 @@ class ChangePasswordView(APIView):
                 {"error": "Could not update password.", "code": "PASSWORD_CHANGE_FAILED"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        change_user_password(request.user, serializer.validated_data["new_password"])
+        change_user_password(target_user, serializer.validated_data["new_password"])
         return Response(
             {"message": "Password updated successfully"},
             status=status.HTTP_200_OK,

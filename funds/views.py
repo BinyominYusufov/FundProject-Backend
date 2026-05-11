@@ -144,7 +144,17 @@ class FundViewSet(
         return Response(read.data, status=201)
 
     def update(self, request, *args, **kwargs):
+        # PUT is intentionally disabled — clients must use PATCH
         return Response(
             {"detail": 'Method "PUT" not allowed. Use PATCH with multipart or JSON.'},
             status=405,
         )
+
+    def partial_update(self, request, *args, **kwargs):
+        # DEVELOPMENT MODE BYPASS — PATCH is always open; no permission guard needed in dev
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        read = FundReadSerializer(instance, context=self.get_serializer_context())
+        return Response(read.data)

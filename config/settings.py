@@ -5,6 +5,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY')
 
+# AUTH DISABLED FOR DEVELOPMENT MODE
+# Toggle authentication and public-access mode via environment variables.
+# Set ENABLE_AUTH=true and DEV_PUBLIC_MODE=false to restore full production auth.
+ENABLE_AUTH: bool = config('ENABLE_AUTH', default=True, cast=bool)
+DEV_PUBLIC_MODE: bool = config('DEV_PUBLIC_MODE', default=False, cast=bool)
+REQUIRE_ADMIN_FOR_DELETE: bool = config('REQUIRE_ADMIN_FOR_DELETE', default=True, cast=bool)
+
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 # When DEBUG is False, enable checks expected by `manage.py check --deploy`.
@@ -123,26 +130,29 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'users.User'
 
+# AUTH DISABLED FOR DEVELOPMENT MODE when ENABLE_AUTH=false / DEV_PUBLIC_MODE=true.
+# Production values are used automatically when ENABLE_AUTH=true.
 REST_FRAMEWORK = {
-    # --- DEV: без обязательной JWT-аутентификации на уровне DRF (раскомментируй для продакшена) ---
-    # 'DEFAULT_AUTHENTICATION_CLASSES': [
-    #     'rest_framework_simplejwt.authentication.JWTAuthentication',
-    # ],
-    'DEFAULT_AUTHENTICATION_CLASSES': [],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
-    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        ['rest_framework_simplejwt.authentication.JWTAuthentication']
+        if ENABLE_AUTH
+        else []
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        ['rest_framework.permissions.IsAuthenticated']
+        if ENABLE_AUTH
+        else ['rest_framework.permissions.AllowAny']
+    ),
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
-    # --- DEV: лимиты запросов отключены (раскомментируй для продакшена) ---
-    # 'DEFAULT_THROTTLE_RATES': {
-    #     'change_password': '5/min',
-    #     'login': '10/min',
-    #     'register': '5/min',
-    # },
+    **({'DEFAULT_THROTTLE_RATES': {
+        'change_password': '5/min',
+        'login': '10/min',
+        'register': '5/min',
+    }} if ENABLE_AUTH else {}),
 }
 
 from datetime import timedelta

@@ -5,7 +5,6 @@ from typing import Any
 from rest_framework import serializers
 
 from funds.models import Fund
-from users.models import Organization, User
 from funds.validators import (
     validate_cover_image_file,
     validate_supporting_document_file,
@@ -61,29 +60,16 @@ class FundCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data: dict[str, Any]) -> Fund:
+        from config.dev_auth import get_dev_user, get_dev_organization
         request = self.context["request"]
-        user: User | None = request.user if request.user.is_authenticated else None
-        organization = user.organization if user else None
-        # DEV: без логина — первая организация и первый пользователь в БД.
-        if organization is None:
-            organization = Organization.objects.order_by("pk").first()
-        if user is None:
-            user = User.objects.order_by("pk").first()
+        # AUTH DISABLED FOR DEVELOPMENT MODE
+        # In production (ENABLE_AUTH=true) these resolve from the authenticated JWT user.
+        user = get_dev_user(request)
+        organization = get_dev_organization(request)
         if organization is None or user is None:
             raise serializers.ValidationError(
-                {
-                    "detail": (
-                        "DEV: нужна хотя бы одна Organization и один User в БД, "
-                        "или войди под fund owner с organization."
-                    ),
-                },
+                {"detail": "At least one Organization and one User must exist in the database."},
             )
-        # Продакшен (только из request.user):
-        # organization = user.organization
-        # if organization is None:
-        #     raise serializers.ValidationError(
-        #         {"organization": "No organization is assigned to your account."},
-        #     )
         return Fund.objects.create(
             organization=organization,
             created_by=user,

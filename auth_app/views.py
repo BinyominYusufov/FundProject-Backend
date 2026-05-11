@@ -6,15 +6,16 @@ from rest_framework import generics, permissions, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
-# from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 
+from config.dev_auth import ENABLE_AUTH, get_dev_user
 from users.models import User
-# from users.permissions import IsAuthenticatedActiveUser
+from users.permissions import IsAuthenticatedActiveUser
 from users.serializers import UserSerializer
 
 from myapp.permissions import FUNOWNERS_GROUP
@@ -99,10 +100,10 @@ class LoginView(APIView):
 
 
 class LogoutView(APIView):
-    # authentication_classes = (JWTAuthentication,)
-    # permission_classes = (IsAuthenticatedActiveUser,)
-    authentication_classes = ()
-    permission_classes = (permissions.AllowAny,)
+    # AUTH DISABLED FOR DEVELOPMENT MODE
+    # Production: authentication_classes = (JWTAuthentication,), permission_classes = (IsAuthenticatedActiveUser,)
+    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
+    permission_classes = (permissions.AllowAny,) if not ENABLE_AUTH else (IsAuthenticatedActiveUser,)
 
     @swagger_auto_schema(
         tags=['Auth'],
@@ -144,11 +145,10 @@ class LogoutView(APIView):
 
 
 class ChangePasswordView(APIView):
-    # authentication_classes = (JWTAuthentication,)
-    # permission_classes = (IsAuthenticatedActiveUser,)
-    # throttle_classes = (ChangePasswordThrottle,)
-    authentication_classes = ()
-    permission_classes = (permissions.AllowAny,)
+    # AUTH DISABLED FOR DEVELOPMENT MODE
+    # Production: authentication_classes = (JWTAuthentication,), permission_classes = (IsAuthenticatedActiveUser,)
+    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
+    permission_classes = (permissions.AllowAny,) if not ENABLE_AUTH else (IsAuthenticatedActiveUser,)
     throttle_classes = ()
 
     @swagger_auto_schema(
@@ -161,7 +161,8 @@ class ChangePasswordView(APIView):
         },
     )
     def post(self, request, *args, **kwargs) -> Response:
-        target_user = request.user if request.user.is_authenticated else User.objects.order_by("pk").first()
+        # AUTH DISABLED FOR DEVELOPMENT MODE — falls back to first DB user when not authenticated
+        target_user = get_dev_user(request)
         if target_user is None:
             return Response(
                 {"error": "No user in database.", "code": "PASSWORD_CHANGE_FAILED"},

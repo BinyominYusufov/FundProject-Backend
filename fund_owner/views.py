@@ -3,19 +3,24 @@ from __future__ import annotations
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, permissions
-# from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from config.dev_auth import ENABLE_AUTH, get_dev_user
 from fund_owner.serializers import OrganizationPublicSerializer, OrganizationWriteSerializer
-# from myapp.permissions import IsFundOwnerWithOrganization
+from myapp.permissions import IsFundOwnerWithOrganization
 from users.models import Organization
-# from users.permissions import IsAuthenticatedActiveUser
+from users.permissions import IsAuthenticatedActiveUser
 
 
 class OrganizationProfileView(generics.RetrieveUpdateAPIView):
-    # authentication_classes = (JWTAuthentication,)
-    # permission_classes = (IsAuthenticatedActiveUser, IsFundOwnerWithOrganization)
-    authentication_classes = ()
-    permission_classes = (permissions.AllowAny,)
+    # AUTH DISABLED FOR DEVELOPMENT MODE
+    # Production: authentication_classes = (JWTAuthentication,)
+    # Production: permission_classes = (IsAuthenticatedActiveUser, IsFundOwnerWithOrganization)
+    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
+    permission_classes = (
+        (permissions.AllowAny,) if not ENABLE_AUTH
+        else (IsAuthenticatedActiveUser, IsFundOwnerWithOrganization)
+    )
 
     @swagger_auto_schema(tags=["Fund owner"])
     def get(self, request, *args, **kwargs):
@@ -30,10 +35,10 @@ class OrganizationProfileView(generics.RetrieveUpdateAPIView):
         return super().patch(request, *args, **kwargs)
 
     def get_object(self) -> Organization:
-        user = self.request.user
-        if user.is_authenticated and getattr(user, "organization_id", None):
+        # AUTH DISABLED FOR DEVELOPMENT MODE
+        user = get_dev_user(self.request)
+        if user is not None and getattr(user, "organization_id", None):
             return get_object_or_404(Organization, pk=user.organization_id)
-        # DEV: первая организация
         first = Organization.objects.order_by("pk").first()
         return get_object_or_404(Organization, pk=first.pk) if first else get_object_or_404(Organization, pk=0)
 

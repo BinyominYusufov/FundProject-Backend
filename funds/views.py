@@ -6,7 +6,9 @@ from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import mixins, parsers, permissions, viewsets
 from rest_framework.response import Response
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from config.dev_auth import ENABLE_AUTH
 from funds.models import Fund
 from funds.serializers import (
     FundCreateSerializer,
@@ -102,11 +104,10 @@ class FundViewSet(
     Organization and creator are derived from the authenticated user.
     """
 
-    # DEV: ограничения сняты — для продакшена:
-    # permission_classes = (IsAuthenticatedActiveUser, IsVerifiedFundOwner)
-    # authentication_classes = (JWTAuthentication,)  # из rest_framework_simplejwt
-    permission_classes = (permissions.AllowAny,)
-    authentication_classes = ()
+    # AUTH DISABLED FOR DEVELOPMENT MODE
+    # Production: permission_classes = (IsAuthenticatedActiveUser, IsVerifiedFundOwner)
+    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
+    permission_classes = (permissions.AllowAny,) if not ENABLE_AUTH else ()
     parser_classes = (
         parsers.MultiPartParser,
         parsers.FormParser,

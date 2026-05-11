@@ -5,38 +5,39 @@ from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-# from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from config.dev_auth import ENABLE_AUTH
 from campaigns.models import Campaign
 from donations.models import Donation
 from donations.serializers import DonationCreateSerializer, DonationSerializer
-# from myapp.permissions import FUNOWNERS_GROUP
+from myapp.permissions import FUNOWNERS_GROUP
 from users.models import User
-# from users.permissions import IsAuthenticatedActiveUser
+from users.permissions import IsAuthenticatedActiveUser
 
 
 def donations_queryset_for(user: User) -> QuerySet[Donation]:
-    # DEV: все донаты
-    return Donation.objects.select_related("campaign", "campaign__organization", "user")
-    # if not isinstance(user, User) or not user.is_active or getattr(user, "is_blocked", False):
-    #     return Donation.objects.none()
-    # base = Donation.objects.select_related("campaign", "campaign__organization", "user")
-    # if user.is_staff:
-    #     return base
-    # if (
-    #     user.groups.filter(name=FUNOWNERS_GROUP).exists()
-    #     and user.role == User.Role.FUND_OWNER
-    #     and user.organization_id
-    # ):
-    #     return base.filter(campaign__organization_id=user.organization_id)
-    # return base.filter(user_id=user.pk)
+    base = Donation.objects.select_related("campaign", "campaign__organization", "user")
+    if not ENABLE_AUTH:
+        # AUTH DISABLED FOR DEVELOPMENT MODE — return all donations
+        return base
+    if not isinstance(user, User) or not user.is_active or getattr(user, "is_blocked", False):
+        return Donation.objects.none()
+    if user.is_staff:
+        return base
+    if (
+        user.groups.filter(name=FUNOWNERS_GROUP).exists()
+        and user.role == User.Role.FUND_OWNER
+        and user.organization_id
+    ):
+        return base.filter(campaign__organization_id=user.organization_id)
+    return base.filter(user_id=user.pk)
 
 
 class DonationListView(generics.ListAPIView):
-    # authentication_classes = (JWTAuthentication,)
-    # permission_classes = (IsAuthenticatedActiveUser,)
-    authentication_classes = ()
-    permission_classes = (permissions.AllowAny,)
+    # AUTH DISABLED FOR DEVELOPMENT MODE
+    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
+    permission_classes = (permissions.AllowAny,) if not ENABLE_AUTH else (IsAuthenticatedActiveUser,)
     serializer_class = DonationSerializer
 
     @swagger_auto_schema(tags=["Donations"])
@@ -48,10 +49,9 @@ class DonationListView(generics.ListAPIView):
 
 
 class DonationCreateView(generics.CreateAPIView):
-    # authentication_classes = (JWTAuthentication,)
-    # permission_classes = (IsAuthenticatedActiveUser,)
-    authentication_classes = ()
-    permission_classes = (permissions.AllowAny,)
+    # AUTH DISABLED FOR DEVELOPMENT MODE
+    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
+    permission_classes = (permissions.AllowAny,) if not ENABLE_AUTH else (IsAuthenticatedActiveUser,)
     serializer_class = DonationCreateSerializer
 
     @swagger_auto_schema(
@@ -67,10 +67,9 @@ class DonationCreateView(generics.CreateAPIView):
 
 
 class DonationDetailView(generics.RetrieveAPIView):
-    # authentication_classes = (JWTAuthentication,)
-    # permission_classes = (IsAuthenticatedActiveUser,)
-    authentication_classes = ()
-    permission_classes = (permissions.AllowAny,)
+    # AUTH DISABLED FOR DEVELOPMENT MODE
+    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
+    permission_classes = (permissions.AllowAny,) if not ENABLE_AUTH else (IsAuthenticatedActiveUser,)
     serializer_class = DonationSerializer
 
     @swagger_auto_schema(tags=["Donations"])
@@ -82,10 +81,9 @@ class DonationDetailView(generics.RetrieveAPIView):
 
 
 class CampaignDonationsView(generics.ListAPIView):
-    # authentication_classes = (JWTAuthentication,)
-    # permission_classes = (IsAuthenticatedActiveUser,)
-    authentication_classes = ()
-    permission_classes = (permissions.AllowAny,)
+    # AUTH DISABLED FOR DEVELOPMENT MODE
+    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
+    permission_classes = (permissions.AllowAny,) if not ENABLE_AUTH else (IsAuthenticatedActiveUser,)
     serializer_class = DonationSerializer
 
     @swagger_auto_schema(tags=["Donations"])

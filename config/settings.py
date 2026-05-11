@@ -12,6 +12,14 @@ ENABLE_AUTH: bool = config('ENABLE_AUTH', default=True, cast=bool)
 DEV_PUBLIC_MODE: bool = config('DEV_PUBLIC_MODE', default=False, cast=bool)
 REQUIRE_ADMIN_FOR_DELETE: bool = config('REQUIRE_ADMIN_FOR_DELETE', default=True, cast=bool)
 
+# AUTONOMOUS DEVELOPMENT MODE FLAGS
+# AUTO_BOOTSTRAP: auto-create dev User+Organization when DB is empty
+# ALLOW_EMPTY_DATABASE: suppress fatal errors requiring pre-existing DB records
+# MOCK_EXTERNAL_SERVICES: use console email backend, skip real SMTP
+AUTO_BOOTSTRAP: bool = config('AUTO_BOOTSTRAP', default=False, cast=bool)
+ALLOW_EMPTY_DATABASE: bool = config('ALLOW_EMPTY_DATABASE', default=False, cast=bool)
+MOCK_EXTERNAL_SERVICES: bool = config('MOCK_EXTERNAL_SERVICES', default=False, cast=bool)
+
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 # When DEBUG is False, enable checks expected by `manage.py check --deploy`.
@@ -192,10 +200,15 @@ REDOC_SETTINGS = {
     'LAZY_RENDERING': False,
 }
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
+# MOCK EXTERNAL SERVICES: use console email backend in dev to avoid SMTP errors
+if MOCK_EXTERNAL_SERVICES:
+    # DEVELOPMENT MODE BYPASS — emails print to console, never hit SMTP
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.gmail.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or config('DEFAULT_FROM_EMAIL', default='noreply@localhost')

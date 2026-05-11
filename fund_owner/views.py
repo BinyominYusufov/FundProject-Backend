@@ -40,7 +40,15 @@ class OrganizationProfileView(generics.RetrieveUpdateAPIView):
         if user is not None and getattr(user, "organization_id", None):
             return get_object_or_404(Organization, pk=user.organization_id)
         first = Organization.objects.order_by("pk").first()
-        return get_object_or_404(Organization, pk=first.pk) if first else get_object_or_404(Organization, pk=0)
+        # AUTO-BOOTSTRAP FALLBACK: create dev org if DB is empty
+        if first is None:
+            from config.dev_auth import AUTO_BOOTSTRAP, _bootstrap_dev_entities
+            if AUTO_BOOTSTRAP:
+                _, first = _bootstrap_dev_entities()
+        if first is None:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("No organization found.")
+        return first
 
     def get_serializer_class(self):
         if self.request.method in ("PUT", "PATCH"):

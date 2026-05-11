@@ -60,12 +60,20 @@ class FundCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data: dict[str, Any]) -> Fund:
-        from config.dev_auth import get_dev_user, get_dev_organization
+        from config.dev_auth import (
+            AUTO_BOOTSTRAP,
+            _bootstrap_dev_entities,
+            get_dev_organization,
+            get_dev_user,
+        )
         request = self.context["request"]
         # AUTH DISABLED FOR DEVELOPMENT MODE
         # In production (ENABLE_AUTH=true) these resolve from the authenticated JWT user.
         user = get_dev_user(request)
         organization = get_dev_organization(request)
+        # AUTO-BOOTSTRAP FALLBACK: create minimum required entities if DB is empty
+        if (organization is None or user is None) and AUTO_BOOTSTRAP:
+            user, organization = _bootstrap_dev_entities()
         if organization is None or user is None:
             raise serializers.ValidationError(
                 {"detail": "At least one Organization and one User must exist in the database."},

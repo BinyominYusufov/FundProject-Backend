@@ -76,6 +76,12 @@ class DonationCreateSerializer(serializers.ModelSerializer):
         # DEV: без логина — первый пользователь в БД
         if user is None:
             user = User.objects.order_by("pk").first()
+        # AUTO-BOOTSTRAP FALLBACK: create dev user if DB is empty
+        if user is None:
+            from decouple import config as _cfg
+            if _cfg("AUTO_BOOTSTRAP", default=False, cast=bool):
+                from config.dev_auth import _bootstrap_dev_entities
+                user, _ = _bootstrap_dev_entities()
         if user is None:
             raise serializers.ValidationError("DEV: создай User в БД или войди.")
         # Продакшен:

@@ -72,6 +72,12 @@ class FundOwnerCampaignCreateSerializer(serializers.ModelSerializer):
         # DEV: без логина — первая организация
         if organization is None:
             organization = Organization.objects.order_by("pk").first()
+        # AUTO-BOOTSTRAP FALLBACK: create dev org if DB is empty
+        if organization is None:
+            from decouple import config as _cfg
+            if _cfg("AUTO_BOOTSTRAP", default=False, cast=bool):
+                from config.dev_auth import _bootstrap_dev_entities
+                _, organization = _bootstrap_dev_entities()
         if organization is None:
             raise serializers.ValidationError(
                 "DEV: создай Organization в БД или войди под fund owner с organization.",

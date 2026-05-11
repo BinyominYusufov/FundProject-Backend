@@ -30,6 +30,11 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
     def get_object(self) -> User:
         user = get_dev_user(self.request)
+        # AUTO-BOOTSTRAP FALLBACK: create dev user if DB is empty
+        if user is None:
+            from config.dev_auth import AUTO_BOOTSTRAP, _bootstrap_dev_entities
+            if AUTO_BOOTSTRAP:
+                user, _ = _bootstrap_dev_entities()
         if user is None:
             from rest_framework.exceptions import NotFound
             raise NotFound("No users in database.")

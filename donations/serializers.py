@@ -4,7 +4,6 @@ from rest_framework import serializers
 
 from campaigns.models import Campaign
 from donations.models import Donation
-from users.models import User
 
 
 class DonationSerializer(serializers.ModelSerializer):
@@ -69,25 +68,15 @@ class DonationCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data: dict) -> Donation:
+        from config.dev_auth import ensure_dev_entities, get_dev_user
         request = self.context.get("request")
-        if request is None:
-            raise serializers.ValidationError("Request context required.")
-        user: User | None = request.user if request.user.is_authenticated else None
-        # DEV: без логина — первый пользователь в БД
+        user = get_dev_user(request) if request is not None else None
         if user is None:
-            user = User.objects.order_by("pk").first()
-        # AUTO-BOOTSTRAP FALLBACK: create dev user if DB is empty
+            user, _ = ensure_dev_entities()
         if user is None:
-            from decouple import config as _cfg
-            if _cfg("AUTO_BOOTSTRAP", default=False, cast=bool):
-                from config.dev_auth import _bootstrap_dev_entities
-                user, _ = _bootstrap_dev_entities()
-        if user is None:
-            raise serializers.ValidationError("DEV: создай User в БД или войди.")
-        # Продакшен:
-        # if not request.user.is_authenticated:
-        #     raise serializers.ValidationError("Authentication required.")
-        # user = request.user
+            raise serializers.ValidationError(
+                "Bootstrap failed: run `python manage.py migrate` first.",
+            )
         if getattr(user, "is_blocked", False) or not user.is_active:
             raise serializers.ValidationError("Account is not allowed to donate.")
         validated_data["user"] = user

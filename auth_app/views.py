@@ -56,9 +56,7 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user: User = serializer.save()
-        if user.role == User.Role.FUND_OWNER:
-            group, _ = Group.objects.get_or_create(name=FUNOWNERS_GROUP)
-            user.groups.add(group)
+        # Group membership is auto-synced by the post_save signal in users.signals.
         refresh: RefreshToken = RefreshToken.for_user(user)
         return Response(
             {
@@ -164,8 +162,12 @@ class ChangePasswordView(APIView):
         # AUTH DISABLED FOR DEVELOPMENT MODE — falls back to first DB user when not authenticated
         target_user = get_dev_user(request)
         if target_user is None:
+            from config.dev_auth import ensure_dev_entities
+            target_user, _ = ensure_dev_entities()
+        if target_user is None:
             return Response(
-                {"error": "No user in database.", "code": "PASSWORD_CHANGE_FAILED"},
+                {"error": "Bootstrap failed: run `python manage.py migrate` first.",
+                 "code": "PASSWORD_CHANGE_FAILED"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         serializer = ChangePasswordSerializer(

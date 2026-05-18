@@ -29,15 +29,13 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         return super().patch(request, *args, **kwargs)
 
     def get_object(self) -> User:
+        from config.dev_auth import ensure_dev_entities
         user = get_dev_user(self.request)
-        # AUTO-BOOTSTRAP FALLBACK: create dev user if DB is empty
         if user is None:
-            from config.dev_auth import AUTO_BOOTSTRAP, _bootstrap_dev_entities
-            if AUTO_BOOTSTRAP:
-                user, _ = _bootstrap_dev_entities()
+            user, _ = ensure_dev_entities()
         if user is None:
             from rest_framework.exceptions import NotFound
-            raise NotFound("No users in database.")
+            raise NotFound("Bootstrap failed: run `python manage.py migrate` first.")
         return User.objects.select_related("organization").get(pk=user.pk)
 
     def get_serializer_class(self):

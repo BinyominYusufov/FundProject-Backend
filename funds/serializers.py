@@ -60,31 +60,32 @@ class FundCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data: dict[str, Any]) -> Fund:
-        from config.dev_auth import (
-            AUTO_BOOTSTRAP,
-            _bootstrap_dev_entities,
-            get_dev_organization,
-            get_dev_user,
-        )
+        from users.models import Organization
         request = self.context["request"]
-        # AUTH DISABLED FOR DEVELOPMENT MODE
-        # In production (ENABLE_AUTH=true) these resolve from the authenticated JWT user.
-        user = get_dev_user(request)
-        organization = get_dev_organization(request)
-        # AUTO-BOOTSTRAP FALLBACK: create minimum required entities if DB is empty
-        if (organization is None or user is None) and AUTO_BOOTSTRAP:
-            user, organization = _bootstrap_dev_entities()
-        if organization is None or user is None:
-            raise serializers.ValidationError(
-                {"detail": "At least one Organization and one User must exist in the database."},
+        user = request.user
+        if not getattr(user, "is_authenticated", False):
+            raise serializers.ValidationError({"detail": "Authentication required."})
+        organization = getattr(user, "organization", None)
+        if organization is None:
+            organization = Organization.objects.create(
+                name=f"{user.username}'s Organization",
+                verified=False,
             )
+            user.organization = organization
+            user.save(update_fields=["organization"])
+        # Unverified organizations may only create draft funds; a verified
+        # organization submits the fund for admin review (pending).
+        status = Fund.Status.PENDING if organization.verified else Fund.Status.DRAFT
         return Fund.objects.create(
             organization=organization,
             created_by=user,
-            status=Fund.Status.PENDING,
+            status=status,
             raised_amount=0,
             **validated_data,
         )
+
+
+FUND_OWNER_ALLOWED_STATUSES = frozenset({Fund.Status.DRAFT, Fund.Status.PAUSED})
 
 
 class FundPartialUpdateSerializer(serializers.ModelSerializer):
@@ -98,6 +99,7 @@ class FundPartialUpdateSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    status = serializers.ChoiceField(choices=Fund.Status.choices, required=False)
 
     class Meta:
         model = Fund
@@ -111,11 +113,26 @@ class FundPartialUpdateSerializer(serializers.ModelSerializer):
             "address",
             "cover_image",
             "supporting_document",
+            "status",
         )
 
     def validate_goal_amount(self, value: int) -> int:
         if value <= 0:
             raise serializers.ValidationError("Goal amount must be greater than zero.")
+        return value
+
+    def validate_status(self, value: str) -> str:
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request is not None else None
+        if user is None or not getattr(user, "is_authenticated", False):
+            raise serializers.ValidationError("Authentication required.")
+        if user.is_staff:
+            return value
+        # Fund owners may only move a fund into draft or paused.
+        if value not in FUND_OWNER_ALLOWED_STATUSES:
+            raise serializers.ValidationError(
+                "Fund owners may only set status to 'draft' or 'paused'.",
+            )
         return value
 
     def update(self, instance: Fund, validated_data: dict[str, Any]) -> Fund:

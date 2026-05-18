@@ -1,3 +1,4 @@
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -14,11 +15,15 @@ python manage.py migrate
 # Run development server
 python manage.py runserver
 
+
 # Django system check (use before running to catch config errors)
 python manage.py check
 
-# Generate a .env file with a random SECRET_KEY
+# Generate a .env file with a random SECRET_KEY (optional — a key is auto-generated on first run)
 python manage.py generate_env
+
+# Idempotently materialize the dev Organization + admin + fund-owner user
+python manage.py bootstrap_dev
 
 # Create the FundOwners permission group (needed for production role setup)
 python manage.py setup_platform_roles
@@ -26,20 +31,39 @@ python manage.py setup_platform_roles
 
 There is no test suite in this project. Validation is done by running `python manage.py check` and hitting the API manually or via `audit_test.py` (temporary script, not committed).
 
-## Environment Flags (.env)
+## Fresh-Clone Bootstrap
 
-All behavior is controlled via `.env` (gitignored). The key flags:
+A fresh clone with **no `.env` file and an empty database** boots and serves all endpoints. The sequence is:
 
-| Flag | Dev value | Effect |
-|------|-----------|--------|
+1. `pip install -r requirements.txt`
+2. `python manage.py migrate`
+3. `python manage.py runserver`
+
+On step 2, the `post_migrate` signal in `users/apps.py` calls `config.dev_auth._bootstrap_dev_entities()`, which idempotently creates:
+- a verified `Organization` named "Dev Organization" **with a complete onboarding profile** (logo, phone, description, country, city, address, and one verification document — see the Fund-Owner Onboarding Gate below). `_ensure_dev_org_profile()` fills these so the fresh-clone "create a fund" flow is not blocked by the onboarding gate.
+- an admin `User` named `dev_admin` (is_staff, is_verified)
+- a fund-owner `User` named `dev_fund_owner` (in the FundOwners group)
+
+On step 3, `UsersConfig.ready()` re-runs bootstrap as a safety net. Every view/serializer that needs a User or Organization calls `config.dev_auth.ensure_dev_entities()` as a fallback, so even a deleted entity self-heals.
+
+`SECRET_KEY` is auto-generated and cached to `.secret_key` (gitignored) when not set in env.
+
+## Environment Flags (.env optional)
+
+The defaults in `config/settings.py` already enable full autonomous dev mode. Override via `.env` only when needed.
+
+| Flag | Default | Effect |
+|------|---------|--------|
 | `ENABLE_AUTH` | `false` | Removes JWT requirement from all endpoints |
 | `DEV_PUBLIC_MODE` | `true` | Falls back to first DB user/org when unauthenticated |
-| `AUTO_BOOTSTRAP` | `true` | Auto-creates a dev Organization + User on empty DB |
-| `ALLOW_EMPTY_DATABASE` | `true` | Suppresses "entity must exist" errors |
+| `AUTO_BOOTSTRAP` | `true` | Auto-creates dev entities on empty DB. Forced to `true` whenever `ENABLE_AUTH=false`. |
+| `ALLOW_EMPTY_DATABASE` | `true` | Semantic flag: empty DB is expected/allowed |
 | `MOCK_EXTERNAL_SERVICES` | `true` | Uses `console.EmailBackend` instead of SMTP |
 | `REQUIRE_ADMIN_FOR_DELETE` | `true` | Keeps DELETE admin-only even in dev mode |
+| `DATABASE_NAME` | `db.sqlite3` | Override the sqlite filename (useful for fresh-DB testing) |
+| `SECRET_KEY` | auto | Auto-generated and cached to `.secret_key` if unset |
 
-To restore full production auth: set `ENABLE_AUTH=true`, `DEV_PUBLIC_MODE=false`, `AUTO_BOOTSTRAP=false`.
+To restore production auth: set `ENABLE_AUTH=true`, `DEV_PUBLIC_MODE=false`, `AUTO_BOOTSTRAP=false`, `DEBUG=False`, and provide a real `SECRET_KEY`.
 
 ## Architecture
 
@@ -57,13 +81,13 @@ The project has 8 Django apps. Model ownership is non-obvious:
 
 `config/dev_auth.py` is the single source of truth for development auth bypass. All views import from here:
 
-- `ENABLE_AUTH`, `DEV_PUBLIC_MODE`, `AUTO_BOOTSTRAP` — boolean flags
+- `ENABLE_AUTH`, `DEV_PUBLIC_MODE`, `AUTO_BOOTSTRAP` — boolean flags. `AUTO_BOOTSTRAP` is forced `True` when `ENABLE_AUTH=False`.
 - `get_dev_user(request)` — returns authenticated user, or first DB user, or bootstraps one
 - `get_dev_organization(request)` — same pattern for Organization
-- `_bootstrap_dev_entities()` — idempotent; creates `Dev Organization` (verified) + `dev_admin` (is_staff) if either is missing
+- `_bootstrap_dev_entities()` / `ensure_dev_entities()` — idempotent; creates `Dev Organization` (verified) + `dev_admin` (is_staff) + `dev_fund_owner` (FundOwners group). Never raises; returns `(None, None)` if migrations haven't run yet.
 - `check_delete_permission(request)` — enforces admin-only DELETEs when `REQUIRE_ADMIN_FOR_DELETE=true`
 
-`users/apps.py` connects a `post_migrate` signal that calls `_bootstrap_dev_entities()` automatically after migrations.
+`users/apps.py` connects a `post_migrate` signal that calls `_bootstrap_dev_entities()` after migrations, **and** runs the same bootstrap inside `AppConfig.ready()` when `runserver`/`shell`/`test` starts. Views and serializers (funds, campaigns, donations, fund_owner, users, auth_app/change-password) call `ensure_dev_entities()` as a final fallback so the API still works even if a row was manually deleted.
 
 ### URL Structure
 
@@ -90,9 +114,26 @@ Two roles on `User.role`: `admin` and `fund_owner`.
 
 - **`myapp/permissions.py`** — canonical permission classes: `IsAdminRole`, `IsFundOwner`, `IsFundOwnerWithOrganization`, `IsAdminOrFundOwner`, `IsOwnerOfObject`, `ReadOnly`
 - **`users/permissions.py`** — re-exports from `myapp.permissions` plus `IsAuthenticatedActiveUser`, `IsFundOwnerOrAdmin`, `fund_owner_scoped_organization_id()`
-- **`funds/permissions.py`** — `IsVerifiedFundOwner` (checks `organization.verified`)
+- **`funds/permissions.py`** — `IsVerifiedFundOwner` (checks `organization.verified`); `OrganizationProfileComplete` (the onboarding gate, see below)
 
-All permission classes are bypassed in dev mode via `permission_classes = (AllowAny,)` controlled by `ENABLE_AUTH`.
+All permission classes are bypassed in dev mode via `permission_classes = (AllowAny,)` controlled by `ENABLE_AUTH`. **Exception:** `FundViewSet` keeps `JWTAuthentication` + `IsAuthenticatedActiveUser` + `FundAccessPermission` + `OrganizationProfileComplete` regardless of `ENABLE_AUTH` — fund management is never un-gated. Dev mode still works because the bootstrapped Dev Organization is given a complete profile.
+
+### Fund-Owner Onboarding Gate
+
+A fund owner **must complete the organization profile before creating or managing funds**. This is enforced by `OrganizationProfileComplete` in `funds/permissions.py`, applied to `FundViewSet` (blocks `POST` and any write/PATCH; SAFE/read methods stay open). Staff and non-fund-owner roles pass through (auth/role rejection is left to the other permission classes).
+
+Profile state lives on the `Organization` model (`users/models.py`):
+- New fields: `logo` (ImageField), `phone_number`, `description`, `country`, `city`, `address`. `name` already existed.
+- `OrganizationDocument` (related name `documents`) — verification documents; **at least one** is required.
+- `Organization.missing_profile_fields` → list of empty required field keys (order: `PROFILE_FIELDS`). `Organization.is_profile_complete` → `not missing_profile_fields`.
+
+API contract for the frontend onboarding flow:
+- `GET /api/fund-owner/profile/` (`OrganizationPublicSerializer`) returns the profile fields plus `documents`, `verified`, `profile_complete`, `missing_fields`, `can_create_fund` (= profile complete), `can_publish_fund` (= profile complete **and** `verified`). The frontend uses these to redirect to Settings → Organization Profile, hide "Create Fund", and show the onboarding banner.
+- `PATCH /api/fund-owner/profile/` (`OrganizationWriteSerializer`, **multipart**) edits the text fields + `logo`, and accepts a write-only `documents` list of files (each appended as a new `OrganizationDocument`; existing ones kept). The view has `MultiPartParser`/`FormParser`/`JSONParser`.
+
+Verification interaction (`Organization.verified`): a profile-complete but **unverified** org may only create **draft** funds — `FundCreateSerializer.create()` sets `status=DRAFT` when `not organization.verified`, else `PENDING`. Publishing/activating remains staff-only (fund owners are already restricted to `draft`/`paused` in `FundPartialUpdateSerializer.validate_status`). `is_blocked` users are rejected at login (`auth_app/serializers.py`) and by `get_active_user()` on every gated endpoint.
+
+> This repo is the **backend**. The UI requirements in the spec (dark-theme profile page, drag & drop area, redirect, banner) are frontend concerns built against the contract above.
 
 ### Serializer Patterns
 
@@ -100,6 +141,8 @@ All permission classes are bypassed in dev mode via `permission_classes = (Allow
 - `DonationCreateSerializer.create()` resolves the donor user the same way.
 - `FundViewSet` disables PUT (returns 405) but exposes PATCH via an explicit `partial_update()` override — DRF's default `partial_update` delegates to `update()`, which would also return 405.
 - `FundOwnerCampaignCreateSerializer` returns only `{"name": "..."}` on POST (no `id`); fetch from the list endpoint if you need the created campaign's ID.
+- `FundCreateSerializer.create()` sets fund `status` by org verification: `DRAFT` if `not organization.verified`, else `PENDING`. The fallback auto-created org is now `verified=False` (was `True`) so it cannot bypass verification.
+- `OrganizationWriteSerializer.update()` pops `documents` and bulk-creates `OrganizationDocument` rows; an explicit `logo: null` is ignored (PATCH keeps the existing logo unless a new file is sent).
 
 ### Email
 

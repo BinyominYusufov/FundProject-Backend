@@ -86,19 +86,29 @@ class UserAdmin(BaseUserAdmin):
     add_form = UserCreationForm
     ordering = ("-created_at",)
     list_display = (
+        "id",
         "username",
-        "email",
         "name",
+        "email",
         "role",
-        "organization",
-        "is_staff",
-        "is_active",
         "is_verified",
         "is_blocked",
-        "created_at",
     )
     list_filter = ("role", "is_staff", "is_active", "is_verified", "is_blocked")
     search_fields = ("username", "email", "name")
+    actions = ("admin_block", "admin_unblock", "admin_verify")
+
+    @admin.action(description="Block selected users")
+    def admin_block(self, request, queryset):
+        queryset.update(is_blocked=True)
+
+    @admin.action(description="Unblock selected users")
+    def admin_unblock(self, request, queryset):
+        queryset.update(is_blocked=False)
+
+    @admin.action(description="Verify selected users")
+    def admin_verify(self, request, queryset):
+        queryset.update(is_verified=True)
     readonly_fields = ("created_at", "last_login")
     fieldsets = (
         (None, {"fields": ("username", "email", "password")}),

@@ -5,17 +5,17 @@ from typing import Any, Final
 from django.db.models import QuerySet
 from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import mixins, permissions, status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
-# from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from myapp.permissions import IsAdminRole
 from users.models import Donation, User
 from users.pagination import AdminUserPagination
-# from myapp.permissions import IsAdminRole
-# from users.permissions import IsAuthenticatedActiveUser, is_active_admin_request
+from users.permissions import IsAuthenticatedActiveUser
 from users.querysets import with_admin_list_annotations
 from users.serializers import (
     AdminUserDonationListSerializer,
@@ -35,11 +35,8 @@ _STATUS_VALUES: Final[frozenset[str]] = frozenset(
 @method_decorator(name="unblock", decorator=swagger_auto_schema(tags=["Admin"]))
 @method_decorator(name="donations", decorator=swagger_auto_schema(tags=["Admin"]))
 class AdminUserViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    # DEV
-    # authentication_classes = (JWTAuthentication,)
-    # permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
-    authentication_classes = ()
-    permission_classes = (permissions.AllowAny,)
+    authentication_classes = (JWTAuthentication,)
+    permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
     serializer_class = AdminUserSerializer
     pagination_class = AdminUserPagination
 

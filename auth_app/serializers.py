@@ -63,15 +63,22 @@ class RegisterSerializer(serializers.ModelSerializer):
         if attrs["password"] != attrs["password_confirm"]:
             raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
         role = attrs["role"]
-        if role == User.Role.FUND_OWNER and attrs.get("organization") is None:
-            raise serializers.ValidationError({"organization": "Required for fund_owner role."})
         if role == User.Role.ADMIN and attrs.get("organization") is not None:
             raise serializers.ValidationError({"organization": "Must be empty for admin role."})
+        if role == User.Role.DONOR and attrs.get("organization") is not None:
+            raise serializers.ValidationError({"organization": "Must be empty for donor role."})
         return attrs
 
     def create(self, validated_data: dict) -> User:
         validated_data.pop("password_confirm")
         password = validated_data.pop("password")
+        role = validated_data.get("role")
+        if role == User.Role.FUND_OWNER and validated_data.get("organization") is None:
+            username = validated_data.get("username") or "owner"
+            validated_data["organization"] = Organization.objects.create(
+                name=f"{username}'s Organization",
+                verified=True,
+            )
         user = User(**validated_data)
         user.set_password(password)
         user.save()

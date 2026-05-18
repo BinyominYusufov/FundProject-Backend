@@ -1,26 +1,47 @@
 from pathlib import Path
 from decouple import config
+from django.core.management.utils import get_random_secret_key
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY')
 
-# AUTH DISABLED FOR DEVELOPMENT MODE
-# Toggle authentication and public-access mode via environment variables.
-# Set ENABLE_AUTH=true and DEV_PUBLIC_MODE=false to restore full production auth.
-ENABLE_AUTH: bool = config('ENABLE_AUTH', default=True, cast=bool)
-DEV_PUBLIC_MODE: bool = config('DEV_PUBLIC_MODE', default=False, cast=bool)
+def _resolve_secret_key() -> str:
+    """Return SECRET_KEY from env, or generate+persist one on first run.
+
+    A missing SECRET_KEY must NOT crash the app — fresh clones with no .env
+    should still boot. We materialize a dev key into BASE_DIR/.secret_key
+    (gitignored) so subsequent runs are stable.
+    """
+    key = config('SECRET_KEY', default='')
+    if key:
+        return key
+    cache = BASE_DIR / '.secret_key'
+    if cache.is_file():
+        try:
+            return cache.read_text(encoding='utf-8').strip() or get_random_secret_key()
+        except Exception:
+            pass
+    new_key = get_random_secret_key()
+    try:
+        cache.write_text(new_key, encoding='utf-8')
+    except Exception:
+        pass
+    return new_key
+
+
+SECRET_KEY = _resolve_secret_key()
+
+# DEV-MODE FLAGS — defaults make a fresh clone fully autonomous.
+# Production: ENABLE_AUTH=true, DEV_PUBLIC_MODE=false, AUTO_BOOTSTRAP=false.
+ENABLE_AUTH: bool = config('ENABLE_AUTH', default=False, cast=bool)
+DEV_PUBLIC_MODE: bool = config('DEV_PUBLIC_MODE', default=True, cast=bool)
 REQUIRE_ADMIN_FOR_DELETE: bool = config('REQUIRE_ADMIN_FOR_DELETE', default=True, cast=bool)
 
-# AUTONOMOUS DEVELOPMENT MODE FLAGS
-# AUTO_BOOTSTRAP: auto-create dev User+Organization when DB is empty
-# ALLOW_EMPTY_DATABASE: suppress fatal errors requiring pre-existing DB records
-# MOCK_EXTERNAL_SERVICES: use console email backend, skip real SMTP
-AUTO_BOOTSTRAP: bool = config('AUTO_BOOTSTRAP', default=False, cast=bool)
-ALLOW_EMPTY_DATABASE: bool = config('ALLOW_EMPTY_DATABASE', default=False, cast=bool)
-MOCK_EXTERNAL_SERVICES: bool = config('MOCK_EXTERNAL_SERVICES', default=False, cast=bool)
+AUTO_BOOTSTRAP: bool = config('AUTO_BOOTSTRAP', default=True, cast=bool)
+ALLOW_EMPTY_DATABASE: bool = config('ALLOW_EMPTY_DATABASE', default=True, cast=bool)
+MOCK_EXTERNAL_SERVICES: bool = config('MOCK_EXTERNAL_SERVICES', default=True, cast=bool)
 
-DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = config('DEBUG', default=True, cast=bool)
 
 # When DEBUG is False, enable checks expected by `manage.py check --deploy`.
 # Use HTTPS in production (or terminate TLS at a reverse proxy and set
@@ -41,7 +62,8 @@ if not DEBUG:
     )
     SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+_allowed_hosts_raw = config('ALLOWED_HOSTS', default='*')
+ALLOWED_HOSTS = ['*'] if _allowed_hosts_raw.strip() in ('', '*') else [h.strip() for h in _allowed_hosts_raw.split(',') if h.strip()]
 
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -112,7 +134,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / config('DATABASE_NAME', default='db.sqlite3'),
     }
 }
 
@@ -173,12 +195,15 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-CORS_ALLOWED_ORIGINS = [
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [r'.*']
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'https://*',
+    'http://*',
 ]
-
-CORS_ALLOW_CREDENTIALS = True
 
 SWAGGER_SETTINGS = {
     'USE_SESSION_AUTH': False,

@@ -4,19 +4,21 @@ from django.db.models import QuerySet
 from django.utils.decorators import method_decorator
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import mixins, parsers, permissions, viewsets
+from rest_framework import mixins, parsers, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from config.dev_auth import ENABLE_AUTH
 from funds.models import Fund
+from funds.permissions import FundAccessPermission, OrganizationProfileComplete
 from funds.serializers import (
     FundCreateSerializer,
     FundPartialUpdateSerializer,
     FundReadSerializer,
 )
-# from funds.permissions import IsVerifiedFundOwner
-# from users.permissions import IsAuthenticatedActiveUser
+from users.models import User
+from users.permissions import IsAuthenticatedActiveUser
 
 
 @method_decorator(
@@ -104,10 +106,12 @@ class FundViewSet(
     Organization and creator are derived from the authenticated user.
     """
 
-    # AUTH DISABLED FOR DEVELOPMENT MODE
-    # Production: permission_classes = (IsAuthenticatedActiveUser, IsVerifiedFundOwner)
-    authentication_classes = () if not ENABLE_AUTH else (JWTAuthentication,)
-    permission_classes = (permissions.AllowAny,) if not ENABLE_AUTH else ()
+    authentication_classes = (JWTAuthentication,)
+    permission_classes = (
+        IsAuthenticatedActiveUser,
+        FundAccessPermission,
+        OrganizationProfileComplete,
+    )
     parser_classes = (
         parsers.MultiPartParser,
         parsers.FormParser,
@@ -115,19 +119,17 @@ class FundViewSet(
     )
 
     def get_queryset(self) -> QuerySet[Fund]:
-        # DEV: все фонды. Продакшен:
-        # user = self.request.user
-        # if not user.is_authenticated:
-        #     return Fund.objects.none()
-        # oid = getattr(user, "organization_id", None)
-        # if oid is None:
-        #     return Fund.objects.none()
-        # return (
-        #     Fund.objects.filter(organization_id=oid)
-        #     .select_related("organization", "created_by")
-        #     .order_by("-created_at")
-        # )
-        return Fund.objects.select_related("organization", "created_by").order_by("-created_at")
+        qs = Fund.objects.select_related("organization", "created_by").order_by("-created_at")
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return Fund.objects.none()
+        if user.is_staff:
+            return qs
+        if getattr(user, "role", None) == User.Role.FUND_OWNER:
+            # Queryset-level ownership scoping: fund_owner sees only own funds.
+            return qs.filter(created_by_id=user.pk)
+        # Donor (and any other read-only role): see all funds.
+        return qs
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -151,9 +153,13 @@ class FundViewSet(
         )
 
     def partial_update(self, request, *args, **kwargs):
-        # DEVELOPMENT MODE BYPASS — PATCH is always open; no permission guard needed in dev
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=True,
+            context={**self.get_serializer_context(), "view_action": "partial_update"},
+        )
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
         read = FundReadSerializer(instance, context=self.get_serializer_context())

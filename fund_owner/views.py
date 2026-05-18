@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import generics, permissions
+from rest_framework import generics, parsers, permissions
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from config.dev_auth import ENABLE_AUTH, get_dev_user
+from config.dev_auth import ENABLE_AUTH
 from fund_owner.serializers import OrganizationPublicSerializer, OrganizationWriteSerializer
 from myapp.permissions import IsFundOwnerWithOrganization
 from users.models import Organization
@@ -21,6 +20,12 @@ class OrganizationProfileView(generics.RetrieveUpdateAPIView):
         (permissions.AllowAny,) if not ENABLE_AUTH
         else (IsAuthenticatedActiveUser, IsFundOwnerWithOrganization)
     )
+    # Profile editing accepts file uploads (logo + verification documents).
+    parser_classes = (
+        parsers.MultiPartParser,
+        parsers.FormParser,
+        parsers.JSONParser,
+    )
 
     @swagger_auto_schema(tags=["Fund owner"])
     def get(self, request, *args, **kwargs):
@@ -35,20 +40,14 @@ class OrganizationProfileView(generics.RetrieveUpdateAPIView):
         return super().patch(request, *args, **kwargs)
 
     def get_object(self) -> Organization:
-        # AUTH DISABLED FOR DEVELOPMENT MODE
-        user = get_dev_user(self.request)
-        if user is not None and getattr(user, "organization_id", None):
-            return get_object_or_404(Organization, pk=user.organization_id)
-        first = Organization.objects.order_by("pk").first()
-        # AUTO-BOOTSTRAP FALLBACK: create dev org if DB is empty
-        if first is None:
-            from config.dev_auth import AUTO_BOOTSTRAP, _bootstrap_dev_entities
-            if AUTO_BOOTSTRAP:
-                _, first = _bootstrap_dev_entities()
-        if first is None:
+        from config.dev_auth import ensure_dev_entities, get_dev_organization
+        org = get_dev_organization(self.request)
+        if org is None:
+            _, org = ensure_dev_entities()
+        if org is None:
             from rest_framework.exceptions import NotFound
-            raise NotFound("No organization found.")
-        return first
+            raise NotFound("Bootstrap failed: run `python manage.py migrate` first.")
+        return org
 
     def get_serializer_class(self):
         if self.request.method in ("PUT", "PATCH"):

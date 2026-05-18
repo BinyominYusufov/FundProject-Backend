@@ -13,6 +13,21 @@ from django.db.models import Q, UniqueConstraint
 class Organization(models.Model):
     name = models.CharField(max_length=255)
     verified = models.BooleanField(default=False)
+
+    # Organization profile (fund-owner onboarding). A fund owner must complete
+    # all of these before they are allowed to create funds. See
+    # `missing_profile_fields` / `is_profile_complete` below.
+    logo = models.ImageField(
+        upload_to="organizations/logos/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+    phone_number = models.CharField(max_length=32, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    country = models.CharField(max_length=128, blank=True, default="")
+    city = models.CharField(max_length=128, blank=True, default="")
+    address = models.CharField(max_length=512, blank=True, default="")
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -20,6 +35,71 @@ class Organization(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    # Profile-field keys, in display order, used by the onboarding flow.
+    PROFILE_FIELDS: ClassVar[tuple[str, ...]] = (
+        "logo",
+        "name",
+        "phone_number",
+        "description",
+        "country",
+        "city",
+        "address",
+        "verification_documents",
+    )
+
+    @property
+    def missing_profile_fields(self) -> list[str]:
+        """Required onboarding fields that are still empty.
+
+        An empty list means the organization profile is complete and the
+        fund owner may create funds.
+        """
+        missing: list[str] = []
+        if not self.logo:
+            missing.append("logo")
+        if not (self.name or "").strip():
+            missing.append("name")
+        if not (self.phone_number or "").strip():
+            missing.append("phone_number")
+        if not (self.description or "").strip():
+            missing.append("description")
+        if not (self.country or "").strip():
+            missing.append("country")
+        if not (self.city or "").strip():
+            missing.append("city")
+        if not (self.address or "").strip():
+            missing.append("address")
+        # `documents` is the reverse relation from OrganizationDocument.
+        if self.pk is None or not self.documents.exists():
+            missing.append("verification_documents")
+        return missing
+
+    @property
+    def is_profile_complete(self) -> bool:
+        return not self.missing_profile_fields
+
+
+class OrganizationDocument(models.Model):
+    """A verification document uploaded as part of organization onboarding.
+
+    An organization may have several (registration, license, ID, …); at least
+    one is required for the profile to count as complete.
+    """
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="documents",
+    )
+    file = models.FileField(upload_to="organizations/documents/%Y/%m/")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering: ClassVar[tuple[str, ...]] = ("-uploaded_at",)
+
+    def __str__(self) -> str:
+        return f"Document #{self.pk} for org {self.organization_id}"
 
 
 class UserManager(BaseUserManager["User"]):
@@ -66,6 +146,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         ADMIN = "admin", "Admin"
         FUND_OWNER = "fund_owner", "Fund owner"
+        DONOR = "donor", "Donor"
 
     username = models.CharField(max_length=150, unique=True, db_index=True)
     email = models.EmailField(blank=True, null=True, db_index=True)

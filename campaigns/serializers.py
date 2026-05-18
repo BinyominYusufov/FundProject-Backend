@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from users.models import Organization, User
-
 from .models import Campaign
 
 
@@ -66,25 +64,14 @@ class FundOwnerCampaignCreateSerializer(serializers.ModelSerializer):
         return v
 
     def create(self, validated_data: dict) -> Campaign:
+        from config.dev_auth import ensure_dev_entities, get_dev_organization
         request = self.context["request"]
-        user: User | None = request.user if request.user.is_authenticated else None
-        organization = user.organization if user else None
-        # DEV: без логина — первая организация
+        organization = get_dev_organization(request)
         if organization is None:
-            organization = Organization.objects.order_by("pk").first()
-        # AUTO-BOOTSTRAP FALLBACK: create dev org if DB is empty
-        if organization is None:
-            from decouple import config as _cfg
-            if _cfg("AUTO_BOOTSTRAP", default=False, cast=bool):
-                from config.dev_auth import _bootstrap_dev_entities
-                _, organization = _bootstrap_dev_entities()
+            _, organization = ensure_dev_entities()
         if organization is None:
             raise serializers.ValidationError(
-                "DEV: создай Organization в БД или войди под fund owner с organization.",
+                "Bootstrap failed: run `python manage.py migrate` first.",
             )
-        # Продакшен:
-        # organization = user.organization
-        # if organization is None:
-        #     raise serializers.ValidationError("No organization assigned to your account.")
         validated_data["organization"] = organization
         return super().create(validated_data)

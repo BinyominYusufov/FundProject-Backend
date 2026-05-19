@@ -20,7 +20,8 @@ urlpatterns = [
     path('admin/users/', include('users.admin_urls')),
     path('api/v1/admin/users/', include('users.admin_urls')),
     path('admin/applications/', include('applications.admin_urls')),
-    path('admin/', admin.site.urls),    
+    path('api/admin/donations/', include('donations.admin_urls')),
+    path('admin/', admin.site.urls),
     re_path(
         r'^swagger(?P<format>\.json|\.yaml)$',
         schema_view.without_ui(cache_timeout=0),
@@ -39,6 +40,7 @@ urlpatterns = [
     path('api/users/', include('users.urls')),
     path('api/fund-owner/', include('fund_owner.urls')),
     path('api/funds/', include('funds.urls')),
+    path('api/donations/', include('donations.urls')),
     path('api/fund-applications/', include('myapp.urls')),
     path('api/applications/', include('applications.urls')),
     path('api/ambassador-applications/', include('ambassadors.urls_public_applications')),

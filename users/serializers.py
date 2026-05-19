@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Donation, Organization, User
+from .models import Organization, User
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -60,10 +60,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
 
 class AdminUserListSerializer(serializers.ModelSerializer):
-    campaigns_count = serializers.IntegerField(read_only=True, min_value=0)
-    donations_count = serializers.IntegerField(read_only=True, min_value=0)
-    total_donated = serializers.IntegerField(read_only=True, min_value=0)
-
     class Meta:
         model = User
         fields = (
@@ -72,9 +68,6 @@ class AdminUserListSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "created_at",
-            "campaigns_count",
-            "donations_count",
-            "total_donated",
             "is_verified",
             "is_blocked",
         )
@@ -109,12 +102,3 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError("This email is already in use.")
         return e
-
-
-class AdminUserDonationListSerializer(serializers.ModelSerializer):
-    campaign_name = serializers.CharField(source="campaign.name", read_only=True)
-
-    class Meta:
-        model = Donation
-        fields = ("id", "amount", "campaign_name", "status", "created_at")
-        read_only_fields = fields

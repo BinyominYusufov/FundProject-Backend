@@ -6,6 +6,7 @@ from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import mixins, parsers, viewsets
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
@@ -107,6 +108,9 @@ class FundViewSet(
     """
 
     authentication_classes = (JWTAuthentication,)
+    # NOTE: per-action permissions are resolved in get_permissions(). `list` and
+    # `retrieve` are fully public (AllowAny); create/update stay gated so fund
+    # management is never un-gated.
     permission_classes = (
         IsAuthenticatedActiveUser,
         FundAccessPermission,
@@ -118,11 +122,21 @@ class FundViewSet(
         parsers.JSONParser,
     )
 
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [AllowAny()]
+        return [
+            IsAuthenticatedActiveUser(),
+            FundAccessPermission(),
+            OrganizationProfileComplete(),
+        ]
+
     def get_queryset(self) -> QuerySet[Fund]:
         qs = Fund.objects.select_related("organization", "created_by").order_by("-created_at")
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
-            return Fund.objects.none()
+            # Public read access: anonymous users see all funds.
+            return qs
         if user.is_staff:
             return qs
         if getattr(user, "role", None) == User.Role.FUND_OWNER:

@@ -53,7 +53,7 @@ class IsFundOwner(BasePermission):
 
 
 class IsFundOwnerWithOrganization(BasePermission):
-    """FundOwners group + fund_owner role + linked organization (manage own campaigns)."""
+    """FundOwners group + fund_owner role + linked organization (manage own funds)."""
 
     message = "Only FundOwners with an assigned organization can perform this action."
     code = "not_fund_owner_org"

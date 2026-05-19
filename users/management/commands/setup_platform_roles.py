@@ -34,8 +34,6 @@ class Command(BaseCommand):
         for app_label, model, code in (
             ("users", "user", "view_user"),
             ("users", "organization", "view_organization"),
-            ("users", "campaign", "view_campaign"),
-            ("users", "donation", "view_donation"),
         ):
             p = _perm(app_label, model, code)
             if p:

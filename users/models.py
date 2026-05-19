@@ -3,9 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any, ClassVar
 
-from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q, UniqueConstraint
 
@@ -185,56 +183,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def get_full_name(self) -> str:
         return self.name.strip() if self.name else ""
-
-
-class Campaign(models.Model):
-    name = models.CharField(max_length=255)
-    organization = models.ForeignKey(
-        Organization,
-        on_delete=models.CASCADE,
-        related_name="campaigns",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering: ClassVar[tuple[str, ...]] = ("-created_at",)
-
-    def __str__(self) -> str:
-        return self.name
-
-
-class Donation(models.Model):
-    class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        COMPLETED = "completed", "Completed"
-        FAILED = "failed", "Failed"
-
-    amount = models.PositiveBigIntegerField(
-        validators=[MinValueValidator(1)],
-    )
-    status = models.CharField(
-        max_length=32,
-        choices=Status.choices,
-        default=Status.COMPLETED,
-        db_index=True,
-    )
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="donations",
-    )
-    campaign = models.ForeignKey(
-        Campaign,
-        on_delete=models.CASCADE,
-        related_name="donations",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering: ClassVar[tuple[str, ...]] = ("-created_at",)
-
-    def __str__(self) -> str:
-        return f"{self.amount} -> {self.campaign_id}"
 
 
 def unique_username_from_email_hint(email: str, *, UserModel: type[User] | None = None) -> str:

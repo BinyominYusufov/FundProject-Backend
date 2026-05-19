@@ -13,12 +13,11 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from myapp.permissions import IsAdminRole
-from users.models import Donation, User
+from users.models import User
 from users.pagination import AdminUserPagination
 from users.permissions import IsAuthenticatedActiveUser
 from users.querysets import with_admin_list_annotations
 from users.serializers import (
-    AdminUserDonationListSerializer,
     AdminUserListSerializer,
     AdminUserSerializer,
 )
@@ -33,7 +32,6 @@ _STATUS_VALUES: Final[frozenset[str]] = frozenset(
 @method_decorator(name="verify", decorator=swagger_auto_schema(tags=["Admin"]))
 @method_decorator(name="block", decorator=swagger_auto_schema(tags=["Admin"]))
 @method_decorator(name="unblock", decorator=swagger_auto_schema(tags=["Admin"]))
-@method_decorator(name="donations", decorator=swagger_auto_schema(tags=["Admin"]))
 class AdminUserViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     authentication_classes = (JWTAuthentication,)
     permission_classes = (IsAuthenticatedActiveUser, IsAdminRole)
@@ -43,12 +41,9 @@ class AdminUserViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def get_serializer_class(
         self,
     ) -> (
-        type[AdminUserDonationListSerializer]
-        | type[AdminUserListSerializer]
+        type[AdminUserListSerializer]
         | type[AdminUserSerializer]
     ):
-        if self.action == "donations":
-            return AdminUserDonationListSerializer
         if self.action in ("list", "verify", "block", "unblock"):
             return AdminUserListSerializer
         return AdminUserSerializer
@@ -108,18 +103,3 @@ class AdminUserViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         user.is_blocked = False
         user.save(update_fields=["is_blocked"])
         return Response(self._list_payload_for_user_id(user.pk))
-
-    @action(detail=True, methods=["get"], url_path="donations")
-    def donations(self, request: Request, pk: Any = None) -> Response:
-        user = self.get_object()
-        donation_qs = (
-            Donation.objects.filter(user_id=user.pk)
-            .select_related("campaign")
-            .order_by("-created_at")
-        )
-        page = self.paginate_queryset(donation_qs)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        serializer = self.get_serializer(donation_qs, many=True)
-        return Response(serializer.data)

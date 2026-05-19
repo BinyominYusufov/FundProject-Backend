@@ -26,7 +26,6 @@ def ensure_role_groups() -> None:
     """
     try:
         from funds.models import Fund
-        from users.models import Campaign, Donation
     except Exception as exc:
         logger.warning("[GROUPS] Skipped (models not ready): %s", exc)
         return
@@ -36,13 +35,10 @@ def ensure_role_groups() -> None:
 
     donor_perms = []
     donor_perms += _perm_codenames(Fund, ["view_fund"])
-    donor_perms += _perm_codenames(Campaign, ["view_campaign"])
-    donor_perms += _perm_codenames(Donation, ["view_donation", "add_donation"])
     donor_group.permissions.set(donor_perms)
 
     owner_perms = []
     owner_perms += _perm_codenames(Fund, ["view_fund", "add_fund", "change_fund"])
-    owner_perms += _perm_codenames(Donation, ["view_donation"])
     fund_owner_group.permissions.set(owner_perms)
 
 

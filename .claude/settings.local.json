@@ -9,7 +9,11 @@
       "Bash(Start-Sleep -Seconds 15)",
       "Bash(Get-Content \"C:\\\\Users\\\\admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-admin-Desktop-Payvast-Backend\\\\1cc85331-3c33-4433-b03e-1b0ae374a526\\\\tasks\\\\b8qtghwld.output\" -Raw)",
       "PowerShell(python -c \"import corsheaders; print\\(corsheaders.__version__\\)\" 2>&1)",
-      "PowerShell(python manage.py makemigrations users)"
+      "PowerShell(python manage.py makemigrations users)",
+      "Bash(ls scripts *)",
+      "Bash(find . -name \"seed*.py\" -not -path \"./.venv/*\")",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/auth/login/ -H \"Content-Type: application/json\" -d '{\"username\":\"dev_admin\",\"password\":\"dev_password_123!\"}')",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/auth/login/ -H \"Content-Type: application/json\" -d '{\"username\":\"dev_fund_owner\",\"password\":\"dev_password_123!\"}')"
     ]
   }
 }

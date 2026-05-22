@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from django.db.models import QuerySet
+from django.db import transaction
+from django.db.models import F, QuerySet
 from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import mixins, status, viewsets
@@ -62,12 +63,19 @@ class DonationViewSet(
         if fund.status != Fund.Status.ACTIVE:
             raise ValidationError({"fund_id": "Fund is not active."})  # -> 400
 
-        donation = Donation.objects.create(
-            user=request.user,  # never from request body
-            fund=fund,
-            amount=serializer.validated_data["amount"],
-            status=Donation.Status.PENDING,
-        )
+        amount = serializer.validated_data["amount"]
+        with transaction.atomic():
+            donation = Donation.objects.create(
+                user=request.user,  # never from request body
+                fund=fund,
+                amount=amount,
+                status=Donation.Status.COMPLETED,
+            )
+            # Atomic F() update — safe against races when two donations to the
+            # same fund are created concurrently.
+            Fund.objects.filter(pk=fund.pk).update(
+                raised_amount=F("raised_amount") + amount,
+            )
         return Response(
             DonationSerializer(donation).data,
             status=status.HTTP_201_CREATED,

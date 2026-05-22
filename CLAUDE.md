@@ -69,13 +69,15 @@ To restore production auth: set `ENABLE_AUTH=true`, `DEV_PUBLIC_MODE=false`, `AU
 
 ### App Layout
 
-The project has 8 Django apps. Model ownership is non-obvious:
+The project has 8 Django apps (`users`, `auth_app`, `funds`, `donations`, `fund_owner`, `myapp`, `applications`, `ambassadors`). Model ownership is non-obvious:
 
-- **`users/models.py`** — contains `User`, `Organization`, `Campaign`, and `Donation` models. The `campaigns` and `donations` apps have empty `models.py` files; they only hold views, serializers, and URL routing.
+- **`users/models.py`** — contains `User`, `Organization`, and `OrganizationDocument`. The old `Campaign` and `Donation` models that once lived here, plus the entire `campaigns` app, were **deleted** in migration `users/0007`.
+- **`donations/`** — owns the `Donation` model (`donations/models.py`). A `Donation` links a `User` to a `funds.Fund` with an `amount` and a `pending`/`completed`/`failed` `status`.
+- **`ambassadors/`** — public "ambassador" people plus a moderation queue of applications to become one. Self-contained — see Ambassadors Module below.
 - **`myapp/`** — "Fund owner applications" (people applying to become fund owners). The name is misleading.
 - **`applications/`** — "Fund applications" (public applications for funding). Separate from `myapp`.
 - **`funds/`** — `Fund` objects (crowdfunding campaigns with files, statuses, and amounts).
-- **`fund_owner/`** — Organization profile management; also mounts `FundOwnerCampaignViewSet` and `FundOwnerDonationViewSet` from other apps under `/api/fund-owner/`.
+- **`fund_owner/`** — Organization profile management under `/api/fund-owner/`: list verified orgs, the onboarding `profile/` endpoint, and org detail.
 
 ### Central Dev-Mode Utility
 
@@ -87,25 +89,27 @@ The project has 8 Django apps. Model ownership is non-obvious:
 - `_bootstrap_dev_entities()` / `ensure_dev_entities()` — idempotent; creates `Dev Organization` (verified) + `dev_admin` (is_staff) + `dev_fund_owner` (FundOwners group). Never raises; returns `(None, None)` if migrations haven't run yet.
 - `check_delete_permission(request)` — enforces admin-only DELETEs when `REQUIRE_ADMIN_FOR_DELETE=true`
 
-`users/apps.py` connects a `post_migrate` signal that calls `_bootstrap_dev_entities()` after migrations, **and** runs the same bootstrap inside `AppConfig.ready()` when `runserver`/`shell`/`test` starts. Views and serializers (funds, campaigns, donations, fund_owner, users, auth_app/change-password) call `ensure_dev_entities()` as a final fallback so the API still works even if a row was manually deleted.
+`users/apps.py` connects a `post_migrate` signal that calls `_bootstrap_dev_entities()` after migrations, **and** runs the same bootstrap inside `AppConfig.ready()` when `runserver`/`shell`/`test` starts. Views and serializers (funds, fund_owner, users, auth_app/change-password) call `ensure_dev_entities()` as a final fallback so the API still works even if a row was manually deleted. Note: the `donations` and `ambassadors` apps do **not** use this bypass — they always require a real authenticated user (see Permission System).
 
 ### URL Structure
 
 ```
-/api/auth/          → auth_app (register, login, logout, token, change-password)
-/api/users/         → users (me/, list)
-/api/campaigns/     → campaigns (list, detail — read-only public)
-/api/donations/     → donations (list, create, detail, campaign/<id>/)
-/api/fund-owner/    → fund_owner + campaigns.FundOwnerCampaignViewSet + donations.FundOwnerDonationViewSet
-                      (profile/, my-funds/, donations/, list, detail)
-/api/funds/         → funds (CRUD via DefaultRouter — PUT disabled, use PATCH)
-/api/fund-applications/ → myapp (list/create, <id>/review/)
-/api/applications/  → applications (submit/ only)
-/admin/users/       → users.AdminUserViewSet (verify, block, unblock, donations actions)
-/admin/campaigns/   → campaigns.AdminCampaignViewSet (list, destroy)
-/admin/donations/   → donations.AdminDonationViewSet (list with search)
-/admin/applications/ → applications.AdminFundApplicationViewSet (list, retrieve, approve, reject)
-/swagger/ or /api/swagger/ → Swagger UI
+/api/auth/                          → auth_app (register, login, logout, token, change-password)
+/api/users/                         → users (me/, list)
+/api/donations/                     → donations.DonationViewSet (list/create/retrieve OWN donations)
+/api/fund-owner/                    → fund_owner (list verified orgs, profile/, <id>/)
+/api/funds/                         → funds.FundViewSet (CRUD via router — PUT disabled, use PATCH)
+/api/fund-applications/             → myapp (list/create, <id>/review/)
+/api/applications/                  → applications (submit/ only)
+/api/ambassador-applications/       → ambassadors public application (POST)
+/api/ambassadors/                   → ambassadors public list + detail
+/admin/users/  &  /api/v1/admin/users/  → users.AdminUserViewSet (verify, block, unblock, donations actions)
+/admin/applications/                → applications.AdminFundApplicationViewSet (list, retrieve, approve, reject)
+/api/admin/donations/               → donations.AdminDonationViewSet (list with filters, PATCH status)
+/api/admin/ambassador-applications/ → ambassadors admin moderation (list, detail, approve, reject)
+/api/admin/ambassadors/             → ambassadors admin CRUD (+ toggle-active, toggle-featured)
+/admin/                             → Django admin site
+/swagger/, /redoc/ (also /api/-prefixed) → API docs
 ```
 
 ### Permission System
@@ -116,7 +120,11 @@ Two roles on `User.role`: `admin` and `fund_owner`.
 - **`users/permissions.py`** — re-exports from `myapp.permissions` plus `IsAuthenticatedActiveUser`, `IsFundOwnerOrAdmin`, `fund_owner_scoped_organization_id()`
 - **`funds/permissions.py`** — `IsVerifiedFundOwner` (checks `organization.verified`); `OrganizationProfileComplete` (the onboarding gate, see below)
 
-All permission classes are bypassed in dev mode via `permission_classes = (AllowAny,)` controlled by `ENABLE_AUTH`. **Exception:** `FundViewSet` keeps `JWTAuthentication` + `IsAuthenticatedActiveUser` + `FundAccessPermission` + `OrganizationProfileComplete` regardless of `ENABLE_AUTH` — fund management is never un-gated. Dev mode still works because the bootstrapped Dev Organization is given a complete profile.
+Most permission classes are bypassed in dev mode via `permission_classes = (AllowAny,)` controlled by `ENABLE_AUTH`. **Exceptions** — these stay gated regardless of `ENABLE_AUTH`:
+
+- `FundViewSet`: `JWTAuthentication` + `IsAuthenticatedActiveUser` + `FundAccessPermission` + `OrganizationProfileComplete` — fund management is never un-gated. Dev mode still works because the bootstrapped Dev Organization is given a complete profile.
+- `DonationViewSet` / `AdminDonationViewSet`: `JWTAuthentication` + `IsAuthenticatedActiveUser` (+ `IsAdminRole` for the admin one).
+- Every ambassador admin view (`ambassadors/views_admin.py` `AdminView` base): `JWTAuthentication` + `IsAuthenticatedActiveUser` + `IsAdminRole`. The public ambassador views are genuinely `AllowAny`.
 
 ### Fund-Owner Onboarding Gate
 
@@ -137,12 +145,11 @@ Verification interaction (`Organization.verified`): a profile-complete but **unv
 
 ### Serializer Patterns
 
-- `FundCreateSerializer.create()` and `FundOwnerCampaignCreateSerializer.create()` resolve `organization` and `user` from `get_dev_user()`/`get_dev_organization()`, falling back to `_bootstrap_dev_entities()` if the DB is empty.
-- `DonationCreateSerializer.create()` resolves the donor user the same way.
-- `FundViewSet` disables PUT (returns 405) but exposes PATCH via an explicit `partial_update()` override — DRF's default `partial_update` delegates to `update()`, which would also return 405.
-- `FundOwnerCampaignCreateSerializer` returns only `{"name": "..."}` on POST (no `id`); fetch from the list endpoint if you need the created campaign's ID.
-- `FundCreateSerializer.create()` sets fund `status` by org verification: `DRAFT` if `not organization.verified`, else `PENDING`. The fallback auto-created org is now `verified=False` (was `True`) so it cannot bypass verification.
+- `FundCreateSerializer.create()` resolves `organization` and `user` from `get_dev_user()`/`get_dev_organization()`, falling back to `_bootstrap_dev_entities()` if the DB is empty.
+- `FundViewSet` disables PUT (returns 405) but exposes PATCH via an explicit `partial_update()` override — DRF's default `partial_update` delegates to `update()`, which would also return 405. `AdminDonationViewSet` does the same (PUT → 405, status transitions go through PATCH).
+- `FundCreateSerializer.create()` sets fund `status` by org verification: `DRAFT` if `not organization.verified`, else `PENDING`. The fallback auto-created org is `verified=False` so it cannot bypass verification.
 - `OrganizationWriteSerializer.update()` pops `documents` and bulk-creates `OrganizationDocument` rows; an explicit `logo: null` is ignored (PATCH keeps the existing logo unless a new file is sent).
+- Donations: `DonationViewSet` takes the donor from `request.user` (never the request body); `DonationCreateSerializer` accepts only `amount` + `fund_id`. Creation rejects a missing fund (404) or a non-`ACTIVE` fund (400). `AdminDonationStatusSerializer` allows only `pending → completed|failed`.
 
 ### Email
 
@@ -151,3 +158,12 @@ Approval/rejection emails are sent from `myapp/services.py` (`send_approval_emai
 ### File Uploads
 
 `Fund` has two file fields (`cover_image`, `supporting_document`). The create endpoint is multipart-only (`MultiPartParser`, `FormParser`). Validators are in `funds/validators.py`.
+
+### Ambassadors Module
+
+`ambassadors/` is self-contained and deliberately does **not** follow the rest of the project's conventions:
+
+- **Strict response envelope** (`ambassadors/envelope.py`): every response is exactly `{"success": true, "data": ...}` or `{"success": false, "message": ...}`. Views subclass `EnvelopeAPIView` and return through the `ok()` / `fail()` helpers. `handle_exception` reshapes DRF auth/permission/validation/not-found errors into the failure envelope — and **remaps DRF's 400 validation errors to HTTP 422**.
+- **No dev-auth bypass.** It never imports `config.dev_auth`. Public views (`views_public.py`) are genuinely `AllowAny`; admin views (`views_admin.py`) are always JWT + admin-gated (`AdminView` base).
+- Two models (`ambassadors/models.py`): `AmbassadorApplication` (public moderation queue, `pending`/`approved`/`rejected`) and `Ambassador` (published people, `is_featured` / `is_active` flags).
+- URLs are split across four modules (`urls_public_*`, `urls_admin_*`) mounted at four separate prefixes — see URL Structure. Admin list endpoints paginate manually via `page`/`limit` query params.
